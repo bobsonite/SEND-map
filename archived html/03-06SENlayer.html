@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>SEND Map Prototype</title>
+  <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+  <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
+  <style>
+    body { margin: 0; padding: 0; }
+    #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+
+    #search-container {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 10;
+      font-family: sans-serif;
+    }
+
+    #search-box {
+      padding: 6px;
+      width: 240px;
+      font-size: 14px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+  #menu {
+  background: white;
+  border-radius: 3px;
+  padding: 10px;
+  font-family: sans-serif;
+  font-size: 13px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 11;
+  pointer-events: auto;
+}  
+</style>
+</head>
+<body>
+<div id="menu" class="mapboxgl-ctrl-top-right">
+  <button id="toggle-menu-button">🧭 Layers ▾</button>
+  <div id="layer-toggles" style="display: none; margin-top: 8px;">
+    <label><input type="checkbox" id="toggle-suspensions"> LA Suspensions</label><br>
+    <label><input type="checkbox" id="toggle-schools"> School Locations</label><br>
+    <label><input type="checkbox" id="toggle-sen-ring"> SEN Highlight</label><br>
+    <label><input type="checkbox" id="toggle-transport"> Transport Stops</label><br>
+<label><input type="checkbox" id="toggle-ehcp-timeliness"> EHCP Timeliness</label>
+  </div>
+</div>
+  <div id="map"></div>
+  <div id="search-container">
+    <input id="search-box" type="text" placeholder="Search Local Authority..." />
+  </div>
+
+  <script>
+    let originalSchoolData = null;
+    let isSchoolDataReady = false;
+  mapboxgl.accessToken = 'pk.eyJ1IjoiYm9ic29uaXRlIiwiYSI6ImNtOXpyeWc1aDFlY24ya3M3dm55a2oyNDcifQ.8H2wkga07prlTm_YpOQicA';
+
+  const map = new mapboxgl.Map({
+    container: 'map',
+    style: 'mapbox://styles/mapbox/light-v10',
+    center: [-1.5, 53.5],
+    zoom: 5.4
+  });
+
+  let allFeatures = [];
+
+  fetch('data/processed/LASuspensionrate.geojson')
+    .then(res => res.json())
+    .then(geojson => {
+      allFeatures = geojson.features;
+
+      map.on('load', () => {
+        map.addSource('suspensions', {
+          type: 'geojson',
+          data: geojson
+        });
+        // ✅ School Source and Layer
+map.addSource('schools', {
+  type: 'geojson',
+  data: 'data/processed/OpenSchoolsSL_with_SEN_withProvision.geojson'
+});
+
+map.addSource('ehcp_timeliness', {
+  type: 'geojson',
+  data: 'data/processed/EHCP_Timeliness.geojson'
+});
+
+        map.addLayer({
+          id: 'suspensions-fill',
+          type: 'fill',
+          source: 'suspensions',
+          paint: {
+            'fill-color': [
+              'interpolate',
+              ['linear'],
+              ['get', 'susp_rate'],
+              0, '#eff3ff',
+              2, '#c6dbef',
+              3, '#9ecae1',
+              4, '#6baed6',
+              5, '#3182bd',
+              6, '#08519c'
+            ],
+            'fill-opacity': 0.6
+          },
+          layout: {'visibility':'none'}
+        });
+
+        map.addLayer({
+          id: 'suspensions-outline',
+          type: 'line',
+          source: 'suspensions',
+          paint: {
+            'line-color': '#000',
+            'line-width': 0.5
+          },
+          layout:{'visibility':'none'}
+        });
+map.addLayer({
+  id: 'ehcp-timeliness-fill',
+  type: 'fill',
+  source: 'ehcp_timeliness',
+  paint: {
+ 'fill-color': [
+  'interpolate',
+  ['linear'],
+  ['to-number', ['get', 'no_exc_20week_rate']],
+  40, '#a50f15',   // dark red = bad
+  50, '#de2d26',
+  60, '#fb6a4a',
+  70, '#fcae91',
+  80, '#fee5d9',
+  90, '#d9f0a3',
+  95, '#78c679',
+  100, '#238443'   // dark green = excellent
+],
+    'fill-opacity': 0.6
+  },
+  layout: {
+    'visibility': 'none'  // default hidden, toggled via menu
+  }
+});
+
+map.addLayer({
+  id: 'ehcp-timeliness-outline',
+  type: 'line',
+  source: 'ehcp_timeliness',
+  paint: {
+    'line-color': '#000',
+    'line-width': 0.5
+  },
+  layout: {
+    'visibility': 'none'
+  }
+});
+
+  // ✅ Immediately add the school circle layer without conditions
+  map.addLayer({
+  id: 'schools-sen-ring',
+  type: 'circle',
+  source: 'schools',
+  filter: ['==', 'HasSENProvision', true],
+  paint: {
+    'circle-radius': 8,
+    'circle-color': 'transparent',
+    'circle-stroke-color': '#5b00ae',
+    'circle-stroke-width': 3
+  },
+  layout: { 'visibility': 'none' }  // toggle via checkbox
+});
+  map.addLayer({
+    id: 'schools-circle',
+    type: 'circle',
+    source: 'schools',
+    paint: {
+      'circle-radius': 4,
+      'circle-color': '#f03b20',
+      'circle-stroke-color': '#fff',
+      'circle-stroke-width': 0.5
+    },
+    layout:{'visibility':'none'}
+  });
+
+
+map.addSource('postcode-districts', {
+  type: 'geojson',
+  data: 'data/processed/EnglishPostcodeDistricts_cleaned.geojson'
+});
+
+// 🚏 Add transport source
+fetch('data/processed/TransportIcons_Corrected.geojson')
+  .then(res => res.json())
+  .then(data => {
+    transportGeojson = data;
+
+    map.addSource('transport', {
+      type: 'geojson',
+      data: data
+    });
+
+// 🚏 Add transport layer with built-in icons
+map.loadImage('https://docs.mapbox.com/mapbox-gl-js/assets/custom_marker.png', (error, image) => {
+  if (error) throw error;
+
+  if (!map.hasImage('custom-marker')) {
+    map.addImage('custom-marker', image);
+  }
+
+  map.addLayer({
+    id: 'transport-icons',
+    type: 'symbol',
+    source: 'transport',
+    layout: {
+      'icon-image': ['get', 'icon'], // 'bus', 'rail', or 'car'
+      'icon-size': 0.7,
+      'icon-allow-overlap': true,
+'visibility': 'none'
+    }
+  });
+});
+});
+        // Popup hover
+        const popup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false });
+
+        map.on('mousemove', 'suspensions-fill', (e) => {
+          map.getCanvas().style.cursor = 'pointer';
+          const props = e.features[0].properties;
+          popup
+            .setLngLat(e.lngLat)
+            .setHTML(`<strong>${props.la_name}</strong><br>Suspension rate: ${props.suspension_rate_label}`)
+            .addTo(map);
+        });
+
+        map.on('mouseleave', 'suspensions-fill', () => {
+          map.getCanvas().style.cursor = '';
+          popup.remove();
+        });
+
+map.on('mousemove', 'ehcp-timeliness-fill', (e) => {
+  map.getCanvas().style.cursor = 'pointer';
+  const props = e.features[0].properties;
+  popup
+    .setLngLat(e.lngLat)
+    .setHTML(`<strong>${props.la_name_y}</strong><br>${Number(props.no_exc_20week_rate).toFixed(1)}% issued within 20 weeks`)
+    .addTo(map);
+});
+
+map.on('mouseleave', 'ehcp-timeliness-fill', () => {
+  map.getCanvas().style.cursor = '';
+  popup.remove();
+});
+        // Search logic (global)
+       document.getElementById('search-box').addEventListener('keydown', async (e) => {
+  if (e.key !== 'Enter') return;
+
+  const query = e.target.value.trim().toUpperCase();
+
+  // 1. Search LA features
+  const laMatch = allFeatures.find(f =>
+    f.properties.la_name && f.properties.la_name.toLowerCase().includes(query.toLowerCase())
+  );
+  if (laMatch) {
+    const bounds = turf.bbox(laMatch);
+    map.fitBounds(bounds, { padding: 50 });
+    return;
+  }
+
+  // 2. Search schools
+  const schoolSource = map.getSource('schools');
+  if (schoolSource) {
+    const schoolData = await fetch('data/processed/OpenSchoolsSL_with_SEN.geojson').then(r => r.json());
+    const schoolMatch = schoolData.features.find(f =>
+      f.properties.EstablishmentName.toLowerCase().includes(query.toLowerCase())
+    );
+    if (schoolMatch) {
+      const coords = schoolMatch.geometry.coordinates;
+      map.flyTo({ center: coords, zoom: 14 });
+      return;
+    }
+  }
+
+  // 3. Search postcode districts (e.g., SW1, B12, E17)
+  if (/^[A-Z]{1,2}[0-9][0-9A-Z]?$/.test(query)) {
+    try {
+      const postcodeData = await fetch('data/processed/EnglishPostcodeDistricts_cleaned.geojson')
+        .then(r => r.json());
+
+      console.log('✅ Postcode data loaded:', postcodeData.features.length);
+      
+      const match = postcodeData.features.find(f => {
+        const code = f.properties["Postcode district"];
+        if (!code) return false;
+        const isMatch = code.toUpperCase() === query;
+        if (isMatch) console.log(`✅ Found match for postcode: ${code}`);
+        return isMatch;
+      });
+
+      if (match) {
+        const bounds = turf.bbox(match);
+        console.log(`📦 Bounding box for ${query}:`, bounds);
+        map.fitBounds(bounds, { padding: 40 });
+      } else {
+        console.warn(`❌ No match found for postcode: ${query}`);
+      }
+    } catch (err) {
+      console.error('❌ Error searching postcode district:', err);
+    }
+  }
+});  // 👈 FINAL CLOSING for entire search-box listener
+// 🏫 School-level tooltip logic
+const schoolPopup = new mapboxgl.Popup({
+  closeButton: false,
+  closeOnClick: false
+});
+
+map.on('click', 'schools-circle', (e) => {
+  const schoolCoords = e.features[0].geometry.coordinates;
+  const p = e.features[0].properties;
+  const schoolPoint = turf.point(schoolCoords);
+  const nearest = transportGeojson.features
+    .map(f => {
+      const dist = turf.distance(schoolPoint, f);
+      return { feature: f, distance: dist };
+    })
+    .sort((a, b) => a.distance - b.distance)
+    .slice(0, 5);
+
+  const transportIcons = {
+    AIR: '✈️ Airport', BCE: '🚌 Bus (Council)', BCQ: '🚌 Bus (Qualified)', BCS: '🚌 Bus (School)',
+    BCT: '🚌 Bus (TfL)', BST: '🚌 Bus (TfL)', FBT: '🚐 Flexible Transport', FER: '⛴️ Ferry Stop',
+    FTD: '⛴️ Ferry Terminal', GAT: '🚇 Gateway', MET: '🚆 Metro', PLT: '🚇 Tube Platform',
+    RLY: '🚉 Rail Station', RPL: '🚆 Rail Platform', RSE: '🚊 Rail Entry', STR: '🚏 Street Pickup',
+    TMU: '🚐 Minibus Hub', TXR: '🚖 Taxi Rank'
+  };
+
+  const capacity = p.SchoolCapacity;
+  const pupils = p.NumberOfPupils;
+  const utilisation = capacity && pupils ? Math.round((pupils / capacity) * 100) : 'N/A';
+
+  let html = `<strong>${p.EstablishmentName}</strong><br>`;
+  html += `<em>${p['TypeOfEstablishment (name)'] || 'Type Unknown'}</em><br>`;
+  html += `👫 Gender: ${p['Gender (name)'] || 'Mixed'}<br>`;
+  html += `🏫 Pupils: ${p.NumberOfPupils || 'N/A'}<br>`;
+  html += `📦 Capacity: ${p.SchoolCapacity || 'N/A'}<br>`;
+  html += `📈 Utilisation: ${utilisation !== 'N/A' ? utilisation + '%' : 'N/A'}<br>`;
+  // ✅ Add SEN Provision tooltip line (safe – from preprocessed field)
+const provision = p.SEN_Provision_List || 'Not available';
+html += `🧠 SEN Provision: ${provision}<br>`;
+  html += `<hr><em>Nearest Transport Stops:</em><ul>`;
+  nearest.forEach(item => {
+    const subtype = item.feature.properties.Subtype;
+    const label = transportIcons[subtype?.toUpperCase()] || subtype;
+    html += `<li>${label} — ${item.feature.properties.Name} (${item.distance.toFixed(2)} km)</li>`;
+  });
+  html += '</ul>';
+
+  new mapboxgl.Popup()
+    .setLngLat(schoolCoords)
+    .setHTML(html)
+    .addTo(map);
+});
+// 🛑 Transport-layer hover popup
+const transportPopup = new mapboxgl.Popup({
+  closeButton: false,
+  closeOnClick: false
+});
+
+map.on('mouseenter', 'transport-icons', (e) => {
+  map.getCanvas().style.cursor = 'pointer';
+  const props = e.features[0].properties;
+  transportPopup.setLngLat(e.lngLat)
+    .setHTML(`<strong>${props.Name}</strong><br>${props.SubType}`)
+    .addTo(map);
+});
+
+map.on('mouseleave', 'transport-icons', () => {
+  map.getCanvas().style.cursor = '';
+  transportPopup.remove();
+});
+document.getElementById('toggle-suspensions').addEventListener('change', (e) => {
+    const visibility = e.target.checked ? 'visible' : 'none';
+    map.setLayoutProperty('suspensions-fill', 'visibility', visibility);
+    map.setLayoutProperty('suspensions-outline', 'visibility', visibility);
+  });
+
+  document.getElementById('toggle-schools').addEventListener('change', (e) => {
+    const visibility = e.target.checked ? 'visible' : 'none';
+    map.setLayoutProperty('schools-circle', 'visibility', visibility);
+  });
+document.getElementById('toggle-sen-ring').addEventListener('change', (e) => {
+  const visibility = e.target.checked ? 'visible' : 'none';
+  map.setLayoutProperty('schools-sen-ring', 'visibility', visibility);
+});
+document.getElementById('toggle-transport').addEventListener('change', (e) => {
+  const visibility = e.target.checked ? 'visible' : 'none';
+  map.setLayoutProperty('transport-icons', 'visibility', visibility);
+});
+document.getElementById('toggle-ehcp-timeliness').addEventListener('change', (e) => {
+  const visibility = e.target.checked ? 'visible' : 'none';
+  map.setLayoutProperty('ehcp-timeliness-fill', 'visibility', visibility);
+  map.setLayoutProperty('ehcp-timeliness-outline', 'visibility', visibility);
+});
+
+document.getElementById('toggle-menu-button').addEventListener('click', () => {
+  const toggles = document.getElementById('layer-toggles');
+  toggles.style.display = toggles.style.display === 'none' ? 'block' : 'none';
+});
+});  // 👈 Closes the map.on('load', ...) block
+    });
+</script>
+</body>
+</html>

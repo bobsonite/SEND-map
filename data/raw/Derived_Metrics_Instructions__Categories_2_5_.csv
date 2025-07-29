@@ -1,0 +1,15 @@
+Metric,Formula,Explanation
+Stable SEND Pathway,"=IF(AND(ISNUMBER(AO2), ISNUMBER(AQ2)), ""Stable"", ""Unstable"")",Shows whether a SEND learner proceeded from education to higher education.
+SEND Drop-off Index,"=IF(AND(ISNUMBER(AK2), ISNUMBER(AO2)), 1 - AO2 / AK2, """")",Proportion of SEND students who didn’t continue into known education routes.
+SEN-to-Unknown Rate,"=IF(AND(ISNUMBER(AW2), ISNUMBER(AK2)), AW2 / AK2, """")",Rate of SEND students whose destination is unknown.
+SEND Not Sustained Rate,"=IF(AND(ISNUMBER(AU2), ISNUMBER(AK2)), AU2 / AK2, """")",Rate of SEND students who did not sustain education or employment.
+KS4 EAE Gap (Disadv. vs Non-Disadv.),"=IF(AND(ISNUMBER(T2), ISNUMBER(U2)), T2 - U2, """")",Gap in post-KS4 education/work destinations between disadvantaged and non-disadvantaged pupils.
+HE Conversion Gap (SEND vs All),"=IF(AND(ISNUMBER(AQ2), ISNUMBER(AP2)), AQ2 - AP2, """")",Difference in % reaching HE between SEND and total cohort.
+Education Gap (SEND vs All),"=IF(AND(ISNUMBER(AO2), ISNUMBER(AN2)), AO2 - AN2, """")",Difference in education pathway continuation.
+Work Gap (SEND vs All),"=IF(AND(ISNUMBER(AS2), ISNUMBER(AR2)), AS2 - AR2, """")",SEND students going into employment vs general population.
+Resourced Provision Capacity,=BH2,Total formal places available in resourced SEND provision.
+SEN Unit Utilisation,"=IF(AND(ISNUMBER(BI2), ISNUMBER(BJ2), BJ2<>0), BI2 / BJ2, """")",Occupancy of SEN unit capacity.
+Specialist Support List,=BK2,"Displays the named types of support available (e.g. ASD, SLCN)."
+Q7a Agreement (Support Yes),"=IF(ISNUMBER(BL2), BL2, """")",Parents agreeing that school provides good SEND support.
+Q7b Strong Agreement,"=IF(ISNUMBER(BN2), BN2, """")",Strongly agree that SEND needs are well met.
+Parental Confidence Index,"=IF(AND(ISNUMBER(BN2), ISNUMBER(BO2)), BN2 + BO2, """")",Combined proportion of agree + strongly agree to show overall sentiment.

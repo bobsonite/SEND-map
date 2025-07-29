@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>SEND Map Prototype</title>
+  <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+  <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet" />
+  <style>
+    body { margin: 0; padding: 0; }
+    #map { position: absolute; top: 0; bottom: 0; width: 100%; }
+
+    #search-container {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 10;
+      font-family: sans-serif;
+    }
+
+    #search-box {
+      padding: 6px;
+      width: 240px;
+      font-size: 14px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="search-container">
+    <input id="search-box" type="text" placeholder="Search Local Authority..." />
+  </div>
+
+  <script>
+  mapboxgl.accessToken = 'pk.eyJ1IjoiYm9ic29uaXRlIiwiYSI6ImNtOXpyeWc1aDFlY24ya3M3dm55a2oyNDcifQ.8H2wkga07prlTm_YpOQicA';
+
+  const map = new mapboxgl.Map({
+    container: 'map',
+    style: 'mapbox://styles/mapbox/light-v10',
+    center: [-1.5, 53.5],
+    zoom: 5.4
+  });
+
+  let allFeatures = [];
+
+  fetch('data/processed/LASuspensionrate.geojson')
+    .then(res => res.json())
+    .then(geojson => {
+      allFeatures = geojson.features;
+
+      map.on('load', () => {
+        map.addSource('suspensions', {
+          type: 'geojson',
+          data: geojson
+        });
+
+        map.addLayer({
+          id: 'suspensions-fill',
+          type: 'fill',
+          source: 'suspensions',
+          paint: {
+            'fill-color': [
+              'interpolate',
+              ['linear'],
+              ['get', 'susp_rate'],
+              0, '#eff3ff',
+              2, '#c6dbef',
+              3, '#9ecae1',
+              4, '#6baed6',
+              5, '#3182bd',
+              6, '#08519c'
+            ],
+            'fill-opacity': 0.6
+          }
+        });
+
+        map.addLayer({
+          id: 'suspensions-outline',
+          type: 'line',
+          source: 'suspensions',
+          paint: {
+            'line-color': '#000',
+            'line-width': 0.5
+          }
+        });
+
+        // Popup hover
+        const popup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false });
+
+        map.on('mousemove', 'suspensions-fill', (e) => {
+          map.getCanvas().style.cursor = 'pointer';
+          const props = e.features[0].properties;
+          popup
+            .setLngLat(e.lngLat)
+            .setHTML(`<strong>${props.la_name}</strong><br>Suspension rate: ${props.suspension_rate_label}`)
+            .addTo(map);
+        });
+
+        map.on('mouseleave', 'suspensions-fill', () => {
+          map.getCanvas().style.cursor = '';
+          popup.remove();
+        });
+
+        // Search logic (global)
+        document.getElementById('search-box').addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            const query = e.target.value.toLowerCase();
+            const match = allFeatures.find(f =>
+              f.properties.la_name && f.properties.la_name.toLowerCase().includes(query)
+            );
+
+            if (match) {
+              const bounds = turf.bbox(match);
+              map.fitBounds(bounds, { padding: 50 });
+            }
+          }
+        });
+      });
+    });
+</script>
+</body>
+</html>
