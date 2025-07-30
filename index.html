@@ -191,6 +191,12 @@ fetch('data/processed/SENDNarrativefinal.csv')
     allFeatures = geojson.features;
 
     map.on('load', () => {
+      map.loadImage('pin-icon.png', (error, image) => {
+  if (error) throw error;
+  if (!map.hasImage('pin-icon')) {
+    map.addImage('pin-icon', image);
+  }
+});
       map.addSource('suspensions', {
         type: 'geojson',
         data: geojson
@@ -353,7 +359,25 @@ map.addLayer({
     'visibility': 'none'
   }
 });
-  // ✅ Immediately add the school circle layer without conditions
+map.addSource('pinned-schools', {
+  type: 'geojson',
+  data: {
+    type: 'FeatureCollection',
+    features: []
+  }
+});
+
+map.addLayer({
+  id: 'pinned-icons',
+  type: 'symbol',
+  source: 'pinned-schools',
+  layout: {
+    'icon-image': 'pin-icon',
+    'icon-size': 0.1,
+    'icon-allow-overlap': true
+  }
+});  
+// ✅ Immediately add the school circle layer without conditions
   map.addLayer({
   id: 'schools-sen-ring',
   type: 'circle',
@@ -673,8 +697,10 @@ map.on('click', 'schools-circle', (e) => {
   const pupils = p.NumberOfPupils;
   const utilisation = capacity && pupils ? Math.round((pupils / capacity) * 100) : 'N/A';
 
-  let html = `<strong>${p.EstablishmentName}</strong><br>`;
-  html += `<em>${p['TypeOfEstablishment (name)'] || 'Type Unknown'}</em><br>`;
+  let html = `
+<strong>${p.EstablishmentName}</strong> 
+<button onclick="pinSchool('${p.URN}', this)" style="float:right; font-size:12px;">📌 Pin</button><br>`;
+html += `<em>${p['TypeOfEstablishment (name)'] || 'Type Unknown'}</em><br>`;
   html += `🎓 Phase: ${p.Is_Secondary === 1 ? 'Secondary' : p.Is_Primary === 1 ? 'Primary' : 'N/A'}<br>`;
   html += `👫 Gender: ${p['Gender (name)'] || 'Mixed'}<br>`;
   html += `🏫 Pupils: ${p.NumberOfPupils || 'N/A'}<br>`;
@@ -694,12 +720,13 @@ html += `🟥 Susp. Rate: ${p.susp_rate ? parseFloat(p.susp_rate).toFixed(1) + '
     html += `<li>${label} — ${item.feature.properties.Name} (${item.distance.toFixed(2)} km)</li>`;
   });
   html += '</ul>';
-html += `<button onclick="pinSchool('${p.URN}', this)">📌 Pin School</button>`;
 
-  new mapboxgl.Popup()
+    const clickPopup = new mapboxgl.Popup()
     .setLngLat(schoolCoords)
     .setHTML(html)
     .addTo(map);
+
+  window.activeSchoolPopup = clickPopup;  // Store for later use
 });
 // 🛑 Transport-layer hover popup
 const transportPopup = new mapboxgl.Popup({
@@ -875,11 +902,12 @@ function pinSchool(urn, button) {
       const p = match.properties;
 
       const card = document.createElement('div');
-      card.style.minWidth = '260px';
-      card.style.border = '1px solid #ccc';
-      card.style.borderRadius = '6px';
-      card.style.padding = '8px';
-      card.style.background = '#fafafa';
+      card.style.minWidth = '220px';
+card.style.border = '1px solid #ccc';
+card.style.borderRadius = '6px';
+card.style.padding = '6px';
+card.style.background = '#fafafa';
+card.style.fontSize = '12px';
 
   card.innerHTML = `
   <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -901,13 +929,30 @@ function pinSchool(urn, button) {
       document.getElementById('comparison-panel').style.display = 'block';
       document.getElementById('comparison-content').appendChild(card);
 
-      // Update button style
-      button.disabled = true;
+            button.disabled = true;
       button.innerText = '📌 Pinned';
+
+const newFeature = {
+  type: 'Feature',
+  geometry: match.geometry,
+  properties: { URN: urn }
+};
+
+const currentData = map.getSource('pinned-schools')._data;
+currentData.features.push(newFeature);
+map.getSource('pinned-schools').setData(currentData);
+      if (window.activeSchoolPopup) {
+  window.activeSchoolPopup.remove();
+  window.activeSchoolPopup = null;
+} // ✅ close popup after pinning
     });
 }
 function unpinSchool(urn, cardElement) {
   pinnedSchools = pinnedSchools.filter(id => id !== urn);
+  const source = map.getSource('pinned-schools');
+const currentData = source._data;
+currentData.features = currentData.features.filter(f => f.properties.URN !== urn);
+source.setData(currentData);
   cardElement.remove();
   if (pinnedSchools.length === 0) {
     document.getElementById('comparison-panel').style.display = 'none';
